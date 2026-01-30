@@ -12,6 +12,7 @@ def add_in_buffer(buffer,features: dict, prediction: float, req_id: str):
         "features": features,
         "prediction": prediction
     })
+    print('data appended in buffer')
 
 
 def get_features_df(buffer) -> pd.DataFrame:

@@ -1,14 +1,12 @@
-import json
 import time
-import sqlite3
-import threading
 from pathlib import Path
-from db import get_connection,init_db,add_metric,add_prediction
+from monitoring.db import get_connection,init_db,add_metric,add_prediction
 from sklearn.datasets import fetch_california_housing
-from streaming_median import StreamingMedian
+from monitoring.streaming_median import StreamingMedian
 import pandas as pd
 import numpy as np
-from metrics_queue import STREAM_BUFFER,add_in_queue,get_features_df
+from datetime import datetime,timezone
+from monitoring.metrics_queue import STREAM_BUFFER,add_in_buffer,get_features_df
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT_DIR/'monitoring'/'monitoring.db'
@@ -27,7 +25,7 @@ class MetricsProcessor:
     def __init__(self,drift_threshold,global_threshold):
         init_db()
 
-        self.queue_data_threshold = 500
+        self.queue_data_threshold = 5
         self.stream_buffer = STREAM_BUFFER
         self.drift_threshold = drift_threshold
         self.golbal_threshold = global_threshold
@@ -38,10 +36,10 @@ class MetricsProcessor:
 
     def backend_ops(self, prediction_request,prediction_value,request_id):
 
-        add_in_queue(self.stream_buffer,prediction_request,prediction_value,request_id)
+        add_in_buffer(self.stream_buffer,prediction_request,prediction_value,request_id)
 
         if len(self.stream_buffer) > self.queue_data_threshold:
-
+            print("more than 500")
             streaming_df = get_features_df(self.stream_buffer)
  
             streaming_mean = []
@@ -75,9 +73,8 @@ class MetricsProcessor:
 
             drift_score = max(mean_ratio, median_ratio)
             global_alert = int(drift_score >= 0.3)
-
+            print("adding in matrix")
             add_metric(
-                timestamp = time.time(),
                 median_value = np.mean(streaming_median),
                 mean_value = np.mean(streaming_mean),
                 std_value = np.mean(streaming_std),
@@ -86,9 +83,9 @@ class MetricsProcessor:
                 median_ratio = median_ratio,
                 std_ratio = std_ratio,
                 alert = global_alert,
-                mean_drift_vals = json.dumps(mean_drift_val),
-                median_drift_vals = json.dumps(median_drift_val),
-                std_drift_vals = json.dumps(std_drift_val)
+                mean_drift_vals = mean_drift_val,
+                median_drift_vals = median_drift_val,
+                std_drift_vals = std_drift_val
             )
 
 
