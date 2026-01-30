@@ -14,15 +14,12 @@ def health_check():
 
 
 @app.post("/predict/{request_id}", response_model=PredictionResponse)
-def predict(request_id: str, request: PredictionRequest):
-    model = get_model()
-
-    data = request.model_dump()
-    values = list(data.values())
-
-    X = np.array(values, dtype=float).reshape(1, -1)
-
-    prediction = float(model.predict(X)[0])
+def predict(request_id: str, data_point: PredictionRequest):
+    data_dict = data_point.model_dump() 
+    data_array = np.array(list(data_dict.values())) 
+    model = load_model() 
+    predict = model.predict(data_array.reshape(1, -1)) 
+    m_processor.backend_ops(data_dict,predict,request_id)
 
     return PredictionResponse(
         prediction=prediction,
