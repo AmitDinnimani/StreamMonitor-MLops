@@ -1,61 +1,104 @@
 import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
+from datetime import datetime,timezone
+import json
 
-DB_PATH = Path(__file__).parent / "monitoring.db"
+BASE_DIR = Path(__file__).resolve().parent.parent
 
+DB_PATH = BASE_DIR / "monitoring" / "monitoring.db"
+DB_PATH.parent.mkdir(exist_ok=True)
+
+def get_connection():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL,
-            prediction REAL NOT NULL,
-            timestamp TEXT NOT NULL
-        )
+    CREATE TABLE IF NOT EXISTS predictions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp REAL,
+        features TEXT,
+        prediction REAL,
+        request_id TEXT
+    )
     """)
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS metrics (
+    CREATE TABLE IF NOT EXISTS metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            median REAL,
-            drift_score REAL,
-            alert INTEGER,
-            timestamp TEXT NOT NULL
+            timestamp REAL,
+            median_value REAL,            
+            mean_value REAL,              
+            std_value REAL,               
+            drift_score REAL,             
+            mean_ratio REAL,
+            median_ratio REAL,
+            std_ratio REAL,
+            alert INTEGER,                
+            mean_drift_vals TEXT,         
+            median_drift_vals TEXT,       
+            std_drift_vals TEXT           
         )
     """)
 
     conn.commit()
     conn.close()
 
+def add_metric( median_value: float,mean_value: float,std_value: float,drift_score: float,
+                mean_ratio: float,median_ratio: float,std_ratio: float,alert: int,
+                mean_drift_vals: list,median_drift_vals: list,std_drift_vals: list ):
+    conn = get_connection()
+    cursor = conn.cursor()
 
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def add_prediction(request_id: str, prediction: float, timestamp: str):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO predictions (request_id, prediction, timestamp) VALUES (?, ?, ?)",
-            (request_id, prediction, timestamp)
+    timestamp = datetime.now(timezone.utc).timestamp()
+    cursor.execute("""
+        INSERT INTO metrics (
+            timestamp, 
+            median_value, 
+            mean_value, 
+            std_value, 
+            drift_score, 
+            mean_ratio, 
+            median_ratio, 
+            std_ratio, 
+            alert,
+            mean_drift_vals,
+            median_drift_vals,
+            std_drift_vals
         )
-        conn.commit()
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        timestamp,
+        median_value,
+        mean_value,
+        std_value,
+        drift_score,
+        mean_ratio,
+        median_ratio,
+        std_ratio,
+        alert,
+        json.dumps(mean_drift_vals),
+        json.dumps(median_drift_vals),
+        json.dumps(std_drift_vals)
+    ))
 
+    conn.commit()
+    conn.close()
+    print("Metric added successfully!")
 
-def add_metrics(median: float, drift_score: float, alert: int, timestamp: str):
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO metrics (median, drift_score, alert, timestamp) VALUES (?, ?, ?, ?)",
-            (median, drift_score, alert, timestamp)
-        )
-        conn.commit()
+def add_prediction(features: dict, prediction: float, request_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    timestamp = datetime.now(timezone.utc).timestamp()
+    features_json = json.dumps(features)       
+
+    cursor.execute("""
+        INSERT INTO predictions (timestamp, features, prediction, request_id)
+        VALUES (?, ?, ?, ?)
+    """, (timestamp, features_json, prediction, request_id))
+    
+    conn.commit()
+    print("Prediction added successfully!")
